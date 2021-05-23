@@ -2,7 +2,7 @@
 import re
 
 
-split_characters = "[?., -!#${}() % + = -_ * ` ~ @ ^ /]"
+split_characters = "[?., !#${}() % + = \\\ \\- _ * ` ~ @ ^ /]+"
 
 class Tokenizer:
 
