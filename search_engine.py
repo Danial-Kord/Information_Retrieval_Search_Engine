@@ -2,7 +2,7 @@ from tokenizer import Tokenizer
 import pandas as pd
 import copy
 
-min_high_frequency_tokens = 0.8
+min_high_frequency_tokens = 0.86
 
 tokens = []
 
@@ -58,6 +58,47 @@ def clear_most_repeated_tokens():
 
 
 
+def answer_query(query):
+    exported_tokens = Tokenizer.get_normalized_tokens(query)
+    results_by_order = []
+    current_tokens_index = []
+    founded_inverted_index = []
+    for i in range(len(exported_tokens)):
+        results_by_order.append([])
+        current_tokens_index.append(0)
+        if inverted_index[exported_tokens[i]] is not None:
+            founded_inverted_index.append(inverted_index[exported_tokens[i]])
+        else:
+            founded_inverted_index.append([])
+
+    min_doc_ID = -1
+    selected_doc_frequency = 0
+    while(True):
+
+        for index in range(len(exported_tokens)):
+            token_doc_index = current_tokens_index[index]
+            if len(founded_inverted_index[index]) > token_doc_index:
+                if min_doc_ID == -1 or min_doc_ID > founded_inverted_index[index][token_doc_index]:
+                    min_doc_ID = founded_inverted_index[index][token_doc_index]
+                    selected_doc_frequency = 1
+                elif min_doc_ID == founded_inverted_index[index][token_doc_index]:
+                    selected_doc_frequency += 1
+        if min_doc_ID == -1:
+            break
+
+        results_by_order[selected_doc_frequency-1].append(min_doc_ID)
+        for index in range(len(exported_tokens)):
+            token_doc_index = current_tokens_index[index]
+            if len(founded_inverted_index[index]) > token_doc_index:
+                if min_doc_ID == founded_inverted_index[index][token_doc_index]:
+                    current_tokens_index[index]+=1
+        min_doc_ID = -1;
+        selected_doc_frequency = 0
+
+    return results_by_order
+
+
+
 
 
 def main():
@@ -78,6 +119,13 @@ def main():
     for i in tokens:
         print(i)
 
+    index = 0
+    for answer in answer_query("بدترین خبر"):
+        print(index+1)
+        text = ""
+        for i in answer:
+            text += str(i) +" "
+        print(text)
 
 
 

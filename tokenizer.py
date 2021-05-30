@@ -2,12 +2,19 @@
 import re
 
 
-split_characters = "[?., : ; !#${}() % + = \\\ \\- _ * ` ~ @ ^ / ، \n]+"
+split_characters = "[?., : ; !#${}() % + = \\\  _ * ` ~ @ ^ / > < ، \n]+"
 
 end_token_redundant = ['تر',
                     'ترین'
                     ,'ها'
                     ,'اً'
+                    ,'گاه'
+                    ,'ی'
+                    ,'ات'
+                    ]
+
+start_token_redundant = ['می',
+                         'هم'
                     ]
 
 class Tokenizer:
@@ -29,5 +36,9 @@ class Tokenizer:
         for i in end_token_redundant:
             if token.endswith(i):
                 token = token[0:len(token) - len(i)]
+                break
+        for i in start_token_redundant:
+            if token.startswith(i):
+                token = token[len(i):len(token)]
                 break
         return token
