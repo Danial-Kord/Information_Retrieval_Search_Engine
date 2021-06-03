@@ -10,6 +10,25 @@ inverted_index = {}
 
 ignorance_tokens =[]
 
+import re
+# test re
+# s = "Example String"
+# replaced = re.sub('\\bE.*e\\b', 'a', s)
+#
+# p = re.compile(r'he( [^}]* )o',re.VERBOSE)
+# p = p.sub(r'\1','hello')
+# print(p)
+#
+# s = "سلام آنها میروند"
+# p = re.compile('\\bمی'
+#                   '(.*)'
+#                   'ند\\b'
+#                ,re.VERBOSE)
+# replaced = p.sub(r'\1',s)
+#
+# print(replaced)
+
+
 def update_inverted_index_list(token,ID):
     if inverted_index.keys().__contains__(token) is False:
         inverted_index[token] = []
@@ -111,6 +130,7 @@ def main():
 
     test = "بدترین"
     print(Tokenizer.token_normalizer(test))
+    Tokenizer.make_verb_to_heritage_dict()
     input()
 
     add_new_file("C:\Danial\Projects\Danial\Information_Retrieval_Search_Engine\IR_Spring2021_ph12_7k.xlsx","id","content")
