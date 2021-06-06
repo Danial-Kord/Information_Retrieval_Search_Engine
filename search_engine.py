@@ -10,6 +10,8 @@ inverted_index = {}
 
 ignorance_tokens =[]
 
+urls = []
+
 import re
 # test re
 # s = "Example String"
@@ -46,11 +48,12 @@ def update_inverted_index_list(token,ID):
         inverted_index[token].insert(place,ID)
 
 
-def add_new_file(path,content_ID_col_name,content_col_name):
+def add_new_file(path,content_ID_col_name,content_col_name,url_col_name):
     data = pd.read_excel(path)
     for index, row in data.iterrows():
         ID = row[content_ID_col_name]
         line = row[content_col_name]
+        urls.append(row[url_col_name])
         # statement = "S " + i
         print(ID)
         current_tokens = Tokenizer.get_tokens(line)
@@ -121,31 +124,35 @@ def answer_query(query):
 
 
 def main():
-    test = "hi?he-----------llo, +-123****,bye///\\\\\\\didi^hmm"
+    # test = "hi?he-----------llo, +-123****,bye///\\\\\\\didi^hmm"
+    #
+    # out = Tokenizer.get_tokens(test)
+    #
+    # for i in out:
+    #     print(i)
 
-    out = Tokenizer.get_tokens(test)
-
-    for i in out:
-        print(i)
-
-    test = "بدترین"
-    print(Tokenizer.token_normalizer(test))
+    # test = "بدترین"
+    # print(Tokenizer.token_normalizer(test))
     Tokenizer.make_verb_to_heritage_dict()
-    input()
+    # input()
 
-    add_new_file("C:\Danial\Projects\Danial\Information_Retrieval_Search_Engine\IR_Spring2021_ph12_7k.xlsx","id","content")
+    add_new_file("IR_Spring2021_ph12_7k.xlsx","id","content","url")
     clear_most_repeated_tokens()
 
     for i in tokens:
         print(i)
 
-    index = 0
-    for answer in answer_query("بدترین خبر"):
-        print(index+1)
-        text = ""
-        for i in answer:
-            text += str(i) +" "
-        print(text)
+    while(True):
+        query = input("query: ")
+        print("Results:")
+        index = 0
+        for answer in answer_query(query):
+            print(index+1)
+            text = ""
+            for i in answer:
+                text += str(i) +" "
+                print(urls[i-1])
+            print(text)
 
 
 

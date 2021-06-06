@@ -1,7 +1,7 @@
 import codecs
 import re
 
-verb_heritages_path = "C:\Danial\Projects\Danial\Information_Retrieval_Search_Engine\\verbs.txt"
+verb_heritages_path = "verbs.txt"
 verbs_stemming = {}
 
 split_characters = "[?., : ; !#${}() % + = \\\  _ * ` ~ @ ^ / > < ، \n « »]+"
