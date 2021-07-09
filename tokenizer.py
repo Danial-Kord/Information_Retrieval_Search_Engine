@@ -1,7 +1,7 @@
 import codecs
 import re
 
-verb_heritages_path = "verbs.txt"
+
 verbs_stemming = {}
 
 split_characters = "[?., : ; !#${}() % + = \\\  _ * ` ~ @ ^ / > < ، \n « »]+"
@@ -42,18 +42,21 @@ class Tokenizer:
         print("tokenizer initiated")
 
 
-    def make_verb_to_heritage_dict():
-        with codecs.open(verb_heritages_path, 'r', encoding='utf8') as f:
-            Lines = f.readlines()
-            for verb in Lines:
-                print(verb)
-                Tokenizer.update_verb_to_heritage_dict(str(verb[0:len(verb)-3]))#removing ن at the end of the verb
-
+    def make_verb_to_heritage_dict(verb_heritages_path):
+        try:
+            with codecs.open(verb_heritages_path, 'r', encoding='utf8') as f:
+                Lines = f.readlines()
+                for verb in Lines:
+                    # print(verb)
+                    Tokenizer.update_verb_to_heritage_dict(str(verb[0:len(verb)-3]))#removing ن at the end of the verb
+                return True
+        except:
+            return False
     def update_verb_to_heritage_dict(verb):
         verbs_stemming[verb] = verb
         verb_splits = verb.split(" ")
         if len(verb_splits) > 1:
-            print("why")
+            # print("why")
             verb_e = verb_splits[len(verb_splits)-1]
             verb_s = ""
             for i in range(len(verb_splits)-1):
@@ -62,13 +65,13 @@ class Tokenizer:
                 for end in end_verb_letters:
                     new_verb = str(verb_s + start + verb_e + end)
                     verbs_stemming[new_verb] = verb
-                    print(new_verb)
+                    # print(new_verb)
         else:
             for start in start_verb_letters:
                 for end in end_verb_letters:
                     new_verb = str(start + verb + end)
                     verbs_stemming[new_verb] = verb
-                    print(new_verb)
+                    # print(new_verb)
 
 
 
