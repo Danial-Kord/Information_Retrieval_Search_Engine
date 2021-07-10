@@ -2,11 +2,13 @@ from tokenizer import Tokenizer
 import pandas as pd
 import copy
 import math
+from MinHeap import MinHeap
 min_high_frequency_tokens = 0.86
 
 tokens = []
 
 inverted_index = {}
+
 
 ignorance_tokens =[]
 
@@ -16,7 +18,7 @@ df = {} #documents frequency of words
 
 #doc term frequency(doc ID are rows, each row has a dictionary of tokens to frequency)
 tdf = {}
-
+k = 5 #return the 5 best results
 total_words_count = 0
 import re
 # test re
@@ -53,7 +55,8 @@ def update_inverted_index_list(token,ID,increamental = False):
         inverted_index[token] = []
         inverted_index[token].append(ID)
     elif increamental:
-        inverted_index[token].append(ID)
+        if inverted_index[token][len(inverted_index[token]) -1 ] != ID:
+            inverted_index[token].append(ID)
     else:
         inverted_token_indexes = inverted_index[token]
         place = 0
@@ -91,6 +94,7 @@ def add_new_file(path,content_ID_col_name,content_col_name,url_col_name):
         urls[ID] = row[url_col_name]
         # statement = "S " + i
         # print(ID)
+
         current_tokens = Tokenizer.get_tokens(line)
         for token in current_tokens:
             if token in ignorance_tokens:
@@ -128,6 +132,7 @@ def clear_most_repeated_tokens():
     copy_tokens.clear()
 
 
+# calculates the vector space presentation and similarity and sort by heap(return the sorted MinHeap)
 def tfIdf_cosine_query(query):
     exported_tokens_temp = Tokenizer.get_normalized_tokens(query)
 
@@ -136,7 +141,6 @@ def tfIdf_cosine_query(query):
     query_vector = []
     exported_tokens = []
     for i in exported_tokens_temp:
-        current_tokens_index.append(0)#current doc ID
         if inverted_index.keys().__contains__(i):
             exported_tokens.append(i)
 
@@ -152,8 +156,11 @@ def tfIdf_cosine_query(query):
 
     doc_score = {}
 
+    heapSort = MinHeap(100)
 
 
+    for i in exported_tokens:
+        print(i)
 
     while (True):
         for index in range(len(exported_tokens)):
@@ -176,9 +183,11 @@ def tfIdf_cosine_query(query):
             vector_result.append(tfIdf_calculator(exported_tokens[index], min_doc_ID))
 
         doc_score[min_doc_ID] = cosin_sim_calculator(query_vector,vector_result)
+        heapSort.insert(doc_score[min_doc_ID],min_doc_ID)
         min_doc_ID = -1
 
-    return doc_score
+    heapSort.minHeap()
+    return heapSort
 
 
 def simple_query(query):
@@ -263,8 +272,10 @@ def main():
         #     print(text)
         #     index +=1
         output = tfIdf_cosine_query(query)
-        for row in output.keys():
-            print("ID: "+ str(row) + " --> " + str(output[row]))
+        inidex = 0
+        for index in range(k):
+            currentID = output.remove()
+            print("ID: "+ str(currentID) + " --> " + str(urls[currentID]))
 
 
 

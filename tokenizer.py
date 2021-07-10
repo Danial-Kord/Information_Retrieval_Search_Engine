@@ -4,11 +4,12 @@ import re
 
 verbs_stemming = {}
 
-split_characters = "[?., : ; !#${}() % + = \\\  _ * ` ~ @ ^ / > < ، \n « »]+"
+split_characters = "[?., : \" - ؛ ; !#${}() % + = \\\  _ * ` ~ @ ^ / > < ، \n « »]+"
 
 end_token_redundant = ['تر',
                     'ترین'
                     ,'ها'
+                    ,'های'
                     ,'اً'
                     ,'گاه'
                     ,'ی'
@@ -79,10 +80,13 @@ class Tokenizer:
         return re.split(split_characters,text)
 
     def get_normalized_tokens(text):
+        outputSet = set()
         tokens = Tokenizer.get_tokens(text)
         for index in range(len(tokens)):
-            tokens[index] = Tokenizer.token_normalizer(tokens[index])
-        return tokens
+            normal = Tokenizer.token_normalizer(tokens[index])
+            tokens[index] = normal
+            outputSet = normal
+        return outputSet
 
     def token_normalizer(token):
         if verbs_stemming.keys().__contains__(token):
