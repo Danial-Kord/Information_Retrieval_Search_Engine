@@ -98,14 +98,15 @@ def update_term_frequency(normalizedToken,originalToken,text,doc_ID):
     if df.keys().__contains__(normalizedToken) is False:
         df[normalizedToken] = 0
 
+
     if tdf.keys().__contains__(doc_ID) is False:
         tdf[doc_ID] = {}
-        df[normalizedToken] += 1
         global total_docs
         total_docs += 1
 
     if tdf[doc_ID].keys().__contains__(normalizedToken) is False:
         tdf[doc_ID][normalizedToken] = 0
+        df[normalizedToken] += 1
     count = text.count(originalToken)
     tdf[doc_ID][normalizedToken] += count
 
@@ -169,9 +170,10 @@ def champion_tfidf_query(query):
     query_vector = []
 
     for i in exported_tokens_temp:
-        if inverted_index.keys().__contains__(i):
+        if champion_list.keys().__contains__(i):
+            print(i)
             exported_tokens.append(i)
-            founded_inverted_index.append(i)
+            founded_inverted_index.append(champion_list[i])
             query_vector.append(tfIdf_calc(i, 1))
 
     for i in founded_inverted_index:
@@ -185,7 +187,7 @@ def champion_tfidf_query(query):
         for term in exported_tokens:
             vector_result.append(tfIdf_calculator(term, i))
         doc_score[i] = cosin_sim_calculator(query_vector,vector_result)
-        minheap.insert(doc_score[i],i)
+        minheap.insert(-doc_score[i],i)
     minheap.minHeap()
 
     if len(all_docs) > k:
@@ -218,6 +220,7 @@ def tfIdf_cosine_query(query):
             exported_tokens.append(i)
 
     for i in range(len(exported_tokens)):
+        print(exported_tokens[i])
         current_tokens_index.append(0)#current doc ID
         if inverted_index.keys().__contains__(exported_tokens[i]):
             founded_inverted_index.append(inverted_index[exported_tokens[i]])
@@ -232,8 +235,7 @@ def tfIdf_cosine_query(query):
     minheap = MinHeap(100)
 
 
-    for i in exported_tokens:
-        print(i)
+
 
     while (True):
         for index in range(len(exported_tokens)):
@@ -264,10 +266,15 @@ def tfIdf_cosine_query(query):
 
 
 def simple_query(query):
-    exported_tokens = Tokenizer.get_normalized_tokens(query)
+    exported_tokens_temp = Tokenizer.get_normalized_tokens(query)
     results_by_order = [] #array of total token length
     current_tokens_index = []
     founded_inverted_index = []
+    exported_tokens = []
+    for i in exported_tokens_temp:
+        if inverted_index.keys().__contains__(i):
+            exported_tokens.append(i)
+
     for i in range(len(exported_tokens)):
         results_by_order.append([])
         current_tokens_index.append(0)
@@ -300,7 +307,7 @@ def simple_query(query):
         min_doc_ID = -1
         selected_doc_frequency = 0
 
-    return results_by_order
+    return results_by_order.__reversed__()
 
 
 
@@ -334,21 +341,25 @@ def main():
 
     while(True):
         query = input("query: ")
+        method = int(input("enter method:\n 0: simple query\n 1: tfidf query 3: champion list"))
         print("Results:")
-        index = 0
-        # for answer in simple_query(query):
-        #     print(index+1)
-        #     text = ""
-        #     for i in answer:
-        #         text += str(i) +" "
-        #         print(urls[i-1])
-        #     print(text)
-        #     index +=1
-        output = tfIdf_cosine_query(query)
-        inidex = 0
-        for index in range(k):
-            currentID = output.remove()
-            print("ID: "+ str(currentID) + " --> " + str(urls[currentID]))
+        if method == 0:
+            index = 0
+            for answer in query_handler(query,method):
+                text = ""
+                for i in answer:
+                    print("ID: " + str(i) + " --> " + str(urls[i]))
+                    index += 1
+                    if index > k:
+                        break
+                if index > k:
+                    break
+        else:
+            output = query_handler(query,method)
+            inidex = 0
+            for index in range(k):
+                currentID = output.remove()
+                print("ID: "+ str(currentID) + " --> " + str(urls[currentID]))
 
 
 

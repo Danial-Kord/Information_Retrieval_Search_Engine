@@ -85,7 +85,7 @@ class Tokenizer:
         for index in range(len(tokens)):
             normal = Tokenizer.token_normalizer(tokens[index])
             tokens[index] = normal
-            outputSet = normal
+            outputSet.add(normal)
         return outputSet
 
     def token_normalizer(token):
