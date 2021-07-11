@@ -160,7 +160,7 @@ def clear_most_repeated_tokens():
     copy_tokens.clear()
 
 
-def champion_tfidf_query(query):
+def champion_tfidf_query(query,use_heap = True,number_outputs = k):
     results = 0
     all_docs = set()
     exported_tokens_temp = Tokenizer.get_normalized_tokens(query)
@@ -180,18 +180,57 @@ def champion_tfidf_query(query):
         for id in i:
             all_docs.add(id)
 
+    doc_results = []
+    founded = 0
+    min_index = 0
+    min_value = 1
+
     doc_score = {}
-    minheap = MinHeap(r)
+    if use_heap:
+        minheap = MinHeap(r)
+
     for i in all_docs:
         vector_result = []
         for term in exported_tokens:
             vector_result.append(tfIdf_calculator(term, i))
         doc_score[i] = cosin_sim_calculator(query_vector,vector_result)
-        minheap.insert(-doc_score[i],i)
-    minheap.minHeap()
+        if use_heap:
+            minheap.insert(-doc_score[i],i)
+        else:
+            if founded < number_outputs:
+                doc_results.append(i)
+                if min_value > doc_score[i]:
+                    min_value = doc_score[i]
+                    min_index = founded
+                founded += 1
+            elif min_value < doc_score[i]:
+                min_value = doc_score[i]
+                doc_results.pop(min_index)
+                doc_results.append(i)
+                for j in range(len(doc_results)):
+                    if doc_score[doc_results[j]] < min_value:
+                        min_index = j
+                        min_value = doc_score[doc_results[j]]
 
-    if len(all_docs) > k:
-        return minheap
+    if use_heap:
+        minheap.minHeap()
+        if len(all_docs) > number_outputs:
+            for i in range(number_outputs):
+                doc_results.append(minheap.remove())
+        else:
+            for i in range(len(all_docs)):
+                doc_results.append(minheap.remove())
+
+    if len(all_docs) < number_outputs:
+        new_data,new_doc_score = tfIdf_cosine_query(query,use_heap,number_outputs=number_outputs - len(all_docs),exceptions= doc_results)
+        for i in new_data:
+            doc_results.append(i)
+        for i in new_doc_score.keys():
+            doc_score[i] = new_doc_score[i]
+
+    return doc_results,doc_score
+
+
 
 
 
@@ -199,16 +238,16 @@ def champion_tfidf_query(query):
 
     query_vector = []
 
-def query_handler(query,method = 0):
+def query_handler(query,method = 0,use_heap=False,number_outputs = k):
     if method == 0:
         return simple_query(query)
     if method == 1:
-        return tfIdf_cosine_query(query)
+        return tfIdf_cosine_query(query,use_heap,number_outputs)
     if method == 2:
-        return champion_tfidf_query(query)
+        return champion_tfidf_query(query,use_heap,number_outputs)
 
 # calculates the vector space presentation and similarity and sort by heap(return the sorted MinHeap)
-def tfIdf_cosine_query(query):
+def tfIdf_cosine_query(query,use_heap = False,number_outputs = k,exceptions = []):
     exported_tokens_temp = Tokenizer.get_normalized_tokens(query)
 
     current_tokens_index = []
@@ -236,7 +275,11 @@ def tfIdf_cosine_query(query):
 
 
 
-
+    #results array
+    doc_results = []
+    founded = 0
+    min_index = 0
+    min_value = 1
     while (True):
         for index in range(len(exported_tokens)):
             token_doc_index = current_tokens_index[index]
@@ -258,11 +301,35 @@ def tfIdf_cosine_query(query):
             vector_result.append(tfIdf_calculator(exported_tokens[index], min_doc_ID))
 
         doc_score[min_doc_ID] = cosin_sim_calculator(query_vector,vector_result)
-        minheap.insert(doc_score[min_doc_ID],min_doc_ID)
+        if use_heap:
+            minheap.insert(-doc_score[min_doc_ID],min_doc_ID)
+        elif min_doc_ID not in exceptions:
+            if founded < number_outputs:
+                doc_results.append(min_doc_ID)
+                if min_value > doc_score[min_doc_ID]:
+                    min_value = doc_score[min_doc_ID]
+                    min_index = founded
+                founded += 1
+            elif min_value < doc_score[min_doc_ID]:
+                min_value = doc_score[min_doc_ID]
+                doc_results.pop(min_index)
+                doc_results.append(min_doc_ID)
+                for j in range(len(doc_results)):
+                    if doc_score[doc_results[j]] < min_value:
+                        min_index = j
+                        min_value = doc_score[doc_results[j]]
+
+
         min_doc_ID = -1
 
-    minheap.minHeap()
-    return minheap
+    if use_heap:
+        minheap.minHeap()
+        doc_results.clear()
+        for i in range(number_outputs):
+            doc_results.append(minheap.remove())
+
+    return doc_results,doc_score
+
 
 
 def simple_query(query):
@@ -340,26 +407,29 @@ def main():
         print(i)
 
     while(True):
-        query = input("query: ")
-        method = int(input("enter method:\n 0: simple query\n 1: tfidf query 3: champion list"))
-        print("Results:")
-        if method == 0:
-            index = 0
-            for answer in query_handler(query,method):
-                text = ""
-                for i in answer:
-                    print("ID: " + str(i) + " --> " + str(urls[i]))
-                    index += 1
+        try:
+            query = input("query: ")
+            method = int(input("enter method:\n 0: simple query\n 1: tfidf query\n 3: champion list"))
+            print("Results:")
+            if method == 0:
+                index = 0
+                for answer in query_handler(query,method):
+                    text = ""
+                    for i in answer:
+                        print("ID: " + str(i) + " --> " + str(urls[i]))
+                        index += 1
+                        if index > k:
+                            break
                     if index > k:
                         break
-                if index > k:
-                    break
-        else:
-            output = query_handler(query,method)
-            inidex = 0
-            for index in range(k):
-                currentID = output.remove()
-                print("ID: "+ str(currentID) + " --> " + str(urls[currentID]))
+            else:
+                use_heap = int(input("\n enter 1 in order to use min heap or enter 0 otherwise")) is 1
+                print(use_heap)
+                output,values = query_handler(query,method,use_heap=use_heap)
+                for i in output:
+                    print("ID: "+ str(i)+", score: " + str(values[i]) + " --> " + str(urls[i]))
+        except:
+            print("some ERRORS accrued")
 
 
 
