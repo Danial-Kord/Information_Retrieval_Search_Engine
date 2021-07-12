@@ -3,6 +3,7 @@ import pandas as pd
 import copy
 import math
 from MinHeap import MinHeap
+import numpy as np
 min_high_frequency_tokens = 0.86
 
 tokens = []
@@ -21,6 +22,11 @@ df = {} #documents frequency of words
 tdf = {}
 k = 5 #return the 5 best results
 total_docs = 0
+
+doc_IDS = []
+docs_vector_presentation = {}
+k_means_centers = []
+k_means_clusters = []
 import re
 # test re
 # s = "Example String"
@@ -38,6 +44,75 @@ import re
 # replaced = p.sub(r'\1',s)
 #
 # print(replaced)
+
+# calculates the k best centers and fill the clusters according to that
+def k_means(k, max_itr,doc_IDs = doc_IDS):
+
+
+    random_centers = list()
+
+    clusters = list()
+    similarity_value_clusters = []
+
+    for i in range(k):
+        random_centers.append(doc_IDs[np.random.uniform(0, len(doc_IDs))])
+        clusters.append(list())
+        similarity_value_clusters.append([])
+
+
+    itr = 0
+    centers = random_centers
+    centers_vector_presentation = []
+    while itr < max_itr:
+        row_index = 0
+        for i in clusters:
+            i.clear()
+        for i in centers:
+            centers_vector_presentation.append(docs_vector_presentation[i])
+        new_centers = copy.deepcopy(centers)
+        for row in doc_IDs:
+
+            # row = row_data.values.tolist()
+            best_match_index = 0
+            best_similarity = -1
+            for c in range(k):
+                sim = cosin_sim_calculator(centers_vector_presentation[c],docs_vector_presentation[row])
+
+                if best_similarity < sim:
+                    best_similarity = sim
+                    best_match_index = c
+            clusters[best_match_index].append(row)
+            similarity_value_clusters[best_match_index].append(best_similarity)
+            row_index += 1
+
+        last_index =0
+        #setting new centers values
+        for i in range(k):
+            if len(clusters[i]) == 0:
+                continue
+            cluster_points = clusters[i]
+            mean_similarity_value = np.mean(np.array(similarity_value_clusters[i]))
+            best_index = 0
+            closest_to_mean = abs(mean_similarity_value - similarity_value_clusters[i][0])
+            index = 0
+            for j in similarity_value_clusters[i]:
+                new_sim = abs(j - mean_similarity_value)
+                if new_sim < closest_to_mean:
+                    best_index = index
+                    closest_to_mean = new_sim
+
+            new_centers[i] = cluster_points[best_index]
+        # print("new centers : \n",new_centers)
+        # print("old centers: \n",centers)
+
+        if centers == new_centers:
+            break
+        centers = new_centers
+        itr+=1
+    for i in clusters:
+        print(i)
+
+    return centers,clusters
 
 
 def tfIdf_calculator(token,doc_ID):
@@ -115,7 +190,7 @@ def update_term_frequency(normalizedToken,originalToken,text,doc_ID):
 def add_new_file(path,content_ID_col_name,content_col_name,url_col_name):
     data = pd.read_excel(path)
     for index, row in data.iterrows():
-        ID = row[content_ID_col_name]
+        ID = row[content_ID_col_name] + total_docs
         line = row[content_col_name]
         urls[ID] = row[url_col_name]
         # statement = "S " + i
@@ -130,6 +205,7 @@ def add_new_file(path,content_ID_col_name,content_col_name,url_col_name):
             update_term_frequency(normalized_token,token,line,ID)
 
     make_championList()
+    calculate_docs_vector_presentation(doc_IDS, tokens)
     return data
 
 
@@ -183,16 +259,14 @@ def champion_tfidf_query(query,use_heap = True,number_outputs = k):
     doc_results = []
     founded = 0
     min_index = 0
-    min_value = 1
+    min_value = 2
 
     doc_score = {}
     if use_heap:
         minheap = MinHeap(r)
 
     for i in all_docs:
-        vector_result = []
-        for term in exported_tokens:
-            vector_result.append(tfIdf_calculator(term, i))
+        vector_result = get_vector_presentation(exported_tokens, i)
         doc_score[i] = cosin_sim_calculator(query_vector,vector_result)
         if use_heap:
             minheap.insert(-doc_score[i],i)
@@ -234,9 +308,12 @@ def champion_tfidf_query(query,use_heap = True,number_outputs = k):
 
 
 
+def get_vector_presentation(terms,doc_id):
+    vector_result = []
+    for term in terms:
+        vector_result.append(tfIdf_calculator(term, doc_id))
+    return vector_result
 
-
-    query_vector = []
 
 def query_handler(query,method = 0,use_heap=False,number_outputs = k):
     if method == 0:
@@ -279,7 +356,7 @@ def tfIdf_cosine_query(query,use_heap = False,number_outputs = k,exceptions = []
     doc_results = []
     founded = 0
     min_index = 0
-    min_value = 1
+    min_value = 2
     while (True):
         for index in range(len(exported_tokens)):
             token_doc_index = current_tokens_index[index]
@@ -292,14 +369,14 @@ def tfIdf_cosine_query(query,use_heap = False,number_outputs = k,exceptions = []
 
 
         # calculates the vector space presentation of doc tfIdf for selected ID
-        vector_result = []
+
         for index in range(len(exported_tokens)):
             token_doc_index = current_tokens_index[index]
             if len(founded_inverted_index[index]) > token_doc_index:
                 if min_doc_ID == founded_inverted_index[index][token_doc_index]:
                     current_tokens_index[index] += 1
-            vector_result.append(tfIdf_calculator(exported_tokens[index], min_doc_ID))
 
+        vector_result = get_vector_presentation(exported_tokens,min_doc_ID)
         doc_score[min_doc_ID] = cosin_sim_calculator(query_vector,vector_result)
         if use_heap:
             minheap.insert(-doc_score[min_doc_ID],min_doc_ID)
@@ -377,6 +454,10 @@ def simple_query(query):
     return results_by_order.__reversed__()
 
 
+def calculate_docs_vector_presentation(all_doc_IDs, terms):
+    docs_vector_presentation.clear()
+    for i in all_doc_IDs:
+        docs_vector_presentation[i] = get_vector_presentation(terms, i)
 
 
 
