@@ -4,6 +4,7 @@ import copy
 import math
 from MinHeap import MinHeap
 import numpy as np
+import sys
 min_high_frequency_tokens = 0.86
 
 tokens = []
@@ -53,10 +54,10 @@ import re
 # KNN algorithm for guessing new data label
 
 
-def KNN_validation(folds = 10)
+def KNN_validation(folds = 10,k = 3):
     trainning_data = []
     labeled_len = len(doc_labels)
-    steps = labeled_len / 10
+    steps = int(labeled_len / 10)
     accuracy = 0
     k_nearest = []# [(index,similarity)]
     min_similarity = sys.maxsize
@@ -70,16 +71,17 @@ def KNN_validation(folds = 10)
         checked_docs = 0
         correct_guessed_lables = 0
         trainning_data.clear()
-        trainning_data = doc_labels.keys()[steps * (f):steps * (f+1)]
+
+        trainning_data = list(doc_labels.keys())[steps * (f):steps * (f+1)]
         for id in doc_labels:
             if id in trainning_data:
                 continue
-            
-            v1 = get_vector_presentation(id,tokens)
+            my_label = doc_labels[id]
+            v1 = get_vector_presentation(tokens,id)
             for train_doc in trainning_data:
             
-                v2 = get_vector_presentation(train_doc,tokens)
-                similarity = cosine_similarity(v1,v2)
+                v2 = get_vector_presentation(tokens,train_doc)
+                similarity = cosin_sim_calculator(v1,v2)
 
                 if founded < k:
                     k_nearest.append((train_doc,similarity))
@@ -121,11 +123,12 @@ def KNN_validation(folds = 10)
                 guessed_label = k_nearest_labels[random_select]
 
             checked_docs += 1
+            print(my_label + "--------" + guessed_label)
             if my_label == guessed_label:
                 correct_guessed_lables += 1
         accuracy += correct_guessed_lables/checked_docs
     accuracy = accuracy / folds
-    print(str(folds) + "cross fold validation accuracy = " + accuracy)
+    print(str(folds) + "cross fold validation accuracy = " + str(accuracy) + " for k = " + str(k))
     return accuracy
 
 
@@ -621,6 +624,15 @@ def calculate_docs_vector_presentation(all_doc_IDs, terms):
 
 
 def main():
+
+    id_col = "id"
+    content_col = "content"
+    url_col = "url"
+    label_col = "topic"
+    add_new_file("IR00_3_11k News.xlsx",id_col,content_col,url_col,label_col)
+    KNN_validation(10)
+    return None
+
     total_words_count = 0
     total_words_count +=1
     # test = "hi?he-----------llo, +-123****,bye///\\\\\\\didi^hmm"
