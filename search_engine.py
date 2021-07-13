@@ -24,9 +24,13 @@ k = 5 #return the 5 best results
 total_docs = 0
 
 doc_IDS = []
+doc_labels = {} #doc ID maps to label
+
 docs_vector_presentation = {}
 k_means_centers = []
 k_means_clusters = []
+KNN_train_docs = []
+
 import re
 # test re
 # s = "Example String"
@@ -44,6 +48,160 @@ import re
 # replaced = p.sub(r'\1',s)
 #
 # print(replaced)
+
+
+# KNN algorithm for guessing new data label
+
+
+def KNN_validation(folds = 10)
+    trainning_data = []
+    labeled_len = len(doc_labels)
+    steps = labeled_len / 10
+    accuracy = 0
+    k_nearest = []# [(index,similarity)]
+    min_similarity = sys.maxsize
+    min_index = 0
+
+    similarity = 0
+    correct_guessed_lables = 0
+
+    founded = 0
+    for f in range(folds):
+        checked_docs = 0
+        correct_guessed_lables = 0
+        trainning_data.clear()
+        trainning_data = doc_labels.keys()[steps * (f):steps * (f+1)]
+        for id in doc_labels:
+            if id in trainning_data:
+                continue
+            
+            v1 = get_vector_presentation(id,tokens)
+            for train_doc in trainning_data:
+            
+                v2 = get_vector_presentation(train_doc,tokens)
+                similarity = cosine_similarity(v1,v2)
+
+                if founded < k:
+                    k_nearest.append((train_doc,similarity))
+                    if min_similarity > similarity:
+                        min_similarity = similarity
+                        min_index = founded
+                    founded += 1
+                elif min_similarity < similarity:
+                    min_similarity = similarity
+                    k_nearest.pop(min_index)
+                    k_nearest.append((train_doc,similarity))
+                    for index in range(len(k_nearest)):
+                        i,value = k_nearest[index]
+                        if value < min_similarity:
+                            min_index = index
+                            min_similarity = value
+            k_nearest_labels = {}
+            best_choice_label_name = None #best label with highest repeat name
+            best_choice_number = -1 #best label number of repeated
+
+            for knn_id, value in k_nearest:
+                label = doc_labels[knn_id]
+                # print(label)
+                if not k_nearest_labels.keys().__contains__(label):
+                    k_nearest_labels[label] = 0
+                k_nearest_labels[label] += 1
+                if k_nearest_labels[label] > best_choice_number:
+                    best_choice_label_name = label
+                    best_choice_number = k_nearest_labels[label]
+
+
+            guessed_label = best_choice_label_name
+            random_labels = []
+            for i in k_nearest_labels.keys():
+                if k_nearest_labels[i] == best_choice_number:
+                    random_labels.append(i)
+            if len(random_labels) > 1:
+                random_select = random_labels[np.random.randint(0,len(random_labels))]
+                guessed_label = k_nearest_labels[random_select]
+
+            checked_docs += 1
+            if my_label == guessed_label:
+                correct_guessed_lables += 1
+        accuracy += correct_guessed_lables/checked_docs
+    accuracy = accuracy / folds
+    print(str(folds) + "cross fold validation accuracy = " + accuracy)
+    return accuracy
+
+
+
+# find all docs without label and choose the best label for them
+def KNN(k): #distance measure 1: cosine similarity, 2: elucidian distance
+
+
+    k_nearest = []# [(index,similarity)]
+    min_similarity = sys.maxsize
+    min_index = 0
+
+    best_row = 0
+    similarity = 0
+    correct_guessed_lables = 0
+
+    founded = 0
+
+    for id in doc_IDS:
+        if doc_labels.keys().__contains__(id):
+            continue
+
+        # print("new")
+        k_nearest.clear()
+        founded = 0
+        v1 = get_vector_presentation(id,tokens)
+        for train_doc in KNN_train_docs:
+        
+            v2 = get_vector_presentation(train_doc,tokens)
+            similarity = cosine_similarity(v1,v2)
+
+            if founded < k:
+                k_nearest.append((train_doc,similarity))
+                if min_similarity > similarity:
+                    min_similarity = similarity
+                    min_index = founded
+                founded += 1
+            elif min_similarity < similarity:
+                min_similarity = similarity
+                k_nearest.pop(min_index)
+                k_nearest.append((train_doc,similarity))
+                for index in range(len(k_nearest)):
+                    i,value = k_nearest[index]
+                    if value < min_similarity:
+                        min_index = index
+                        min_similarity = value
+        k_nearest_labels = {}
+        best_choice_label_name = None #best label with highest repeat name
+        best_choice_number = -1 #best label number of repeated
+
+        for knn_id, value in k_nearest:
+            label = doc_labels[knn_id]
+            # print(label)
+            if not k_nearest_labels.keys().__contains__(label):
+                k_nearest_labels[label] = 0
+            k_nearest_labels[label] += 1
+            if k_nearest_labels[label] > best_choice_number:
+                best_choice_label_name = label
+                best_choice_number = k_nearest_labels[label]
+
+
+        guessed_label = best_choice_label_name
+        random_labels = []
+        for i in k_nearest_labels.keys():
+            if k_nearest_labels[i] == best_choice_number:
+                random_labels.append(i)
+        if len(random_labels) > 1:
+            random_select = random_labels[np.random.randint(0,len(random_labels))]
+            guessed_label = k_nearest_labels[random_select]
+
+        # print(my_label + "-----" + guessed_label)
+
+        doc_labels[id] = guessed_label
+        
+
+# KNN--------------------------------------------
 
 # calculates the k best centers and fill the clusters according to that
 def k_means(k, max_itr,doc_IDs = doc_IDS):
@@ -187,7 +345,7 @@ def update_term_frequency(normalizedToken,originalToken,text,doc_ID):
 
 
 
-def add_new_file(path,content_ID_col_name,content_col_name,url_col_name):
+def add_new_file(path,content_ID_col_name,content_col_name,url_col_name,label_col = None):
     data = pd.read_excel(path)
     for index, row in data.iterrows():
         ID = row[content_ID_col_name] + total_docs
@@ -195,7 +353,8 @@ def add_new_file(path,content_ID_col_name,content_col_name,url_col_name):
         urls[ID] = row[url_col_name]
         # statement = "S " + i
         # print(ID)
-
+        if label_col != None:
+            doc_labels[ID] = label_col 
         current_tokens = Tokenizer.get_tokens(line)
         for token in current_tokens:
             if token in ignorance_tokens:
