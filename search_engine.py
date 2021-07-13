@@ -5,6 +5,8 @@ import math
 from MinHeap import MinHeap
 import numpy as np
 import sys
+import random
+import time
 min_high_frequency_tokens = 0.86
 
 tokens = []
@@ -26,11 +28,11 @@ total_docs = 0
 
 doc_IDS = []
 doc_labels = {} #doc ID maps to label
-
+categories = {} #label to doc IDS
 docs_vector_presentation = {}
 k_means_centers = []
 k_means_clusters = []
-KNN_train_docs = []
+
 
 import re
 # test re
@@ -54,9 +56,11 @@ import re
 # KNN algorithm for guessing new data label
 
 
-def KNN_validation(folds = 10,k = 3):
+def KNN_validation(folds = 10,k = 3,fraction_of_labeled_data = 0.03):
+    print("KNN validation test started")
+    selected_labeled_data = random.sample(list(doc_labels.keys()),int(fraction_of_labeled_data*len(doc_labels)))
     trainning_data = []
-    labeled_len = len(doc_labels)
+    labeled_len = len(selected_labeled_data)
     steps = int(labeled_len / 10)
     accuracy = 0
     k_nearest = []# [(index,similarity)]
@@ -72,8 +76,8 @@ def KNN_validation(folds = 10,k = 3):
         correct_guessed_lables = 0
         trainning_data.clear()
 
-        trainning_data = list(doc_labels.keys())[steps * (f):steps * (f+1)]
-        for id in doc_labels:
+        trainning_data = selected_labeled_data[steps * (f):steps * (f+1)]
+        for id in selected_labeled_data:
             if id in trainning_data:
                 continue
             my_label = doc_labels[id]
@@ -114,16 +118,19 @@ def KNN_validation(folds = 10,k = 3):
 
 
             guessed_label = best_choice_label_name
+            # print(guessed_label)
             random_labels = []
             for i in k_nearest_labels.keys():
                 if k_nearest_labels[i] == best_choice_number:
                     random_labels.append(i)
             if len(random_labels) > 1:
                 random_select = random_labels[np.random.randint(0,len(random_labels))]
-                guessed_label = k_nearest_labels[random_select]
+                guessed_label = random_select
+                print(guessed_label)
 
             checked_docs += 1
-            print(my_label + "--------" + guessed_label)
+            # print(guessed_label)
+            # print(my_label + "--------" + guessed_label)
             if my_label == guessed_label:
                 correct_guessed_lables += 1
         accuracy += correct_guessed_lables/checked_docs
@@ -134,7 +141,7 @@ def KNN_validation(folds = 10,k = 3):
 
 
 # find all docs without label and choose the best label for them
-def KNN(k): #distance measure 1: cosine similarity, 2: elucidian distance
+def KNN(k,n=300): #check with k closest n = number od train data to check new data with
 
 
     k_nearest = []# [(index,similarity)]
@@ -146,7 +153,7 @@ def KNN(k): #distance measure 1: cosine similarity, 2: elucidian distance
     correct_guessed_lables = 0
 
     founded = 0
-
+    sample_train_data = random.sample(list(doc_labels.keys()),n)
     for id in doc_IDS:
         if doc_labels.keys().__contains__(id):
             continue
@@ -155,10 +162,11 @@ def KNN(k): #distance measure 1: cosine similarity, 2: elucidian distance
         k_nearest.clear()
         founded = 0
         v1 = get_vector_presentation(id,tokens)
-        for train_doc in KNN_train_docs:
+
+        for train_doc in sample_train_data:
         
             v2 = get_vector_presentation(train_doc,tokens)
-            similarity = cosine_similarity(v1,v2)
+            similarity = cosin_sim_calculator(v1,v2)
 
             if founded < k:
                 k_nearest.append((train_doc,similarity))
@@ -197,11 +205,14 @@ def KNN(k): #distance measure 1: cosine similarity, 2: elucidian distance
                 random_labels.append(i)
         if len(random_labels) > 1:
             random_select = random_labels[np.random.randint(0,len(random_labels))]
-            guessed_label = k_nearest_labels[random_select]
+            guessed_label = random_select
 
         # print(my_label + "-----" + guessed_label)
 
         doc_labels[id] = guessed_label
+        if not categories.keys().__contains__(guessed_label):
+            categories[guessed_label] = []
+        categories[guessed_label].append(id)
         
 
 # KNN--------------------------------------------
@@ -357,7 +368,13 @@ def add_new_file(path,content_ID_col_name,content_col_name,url_col_name,label_co
         # statement = "S " + i
         # print(ID)
         if label_col != None:
-            doc_labels[ID] = label_col 
+            label = row[label_col]
+            doc_labels[ID] = label
+            if not categories.keys().__contains__(label):
+                categories[label] = []
+            categories[label].append(ID)
+
+
         current_tokens = Tokenizer.get_tokens(line)
         for token in current_tokens:
             if token in ignorance_tokens:
@@ -476,14 +493,87 @@ def get_vector_presentation(terms,doc_id):
         vector_result.append(tfIdf_calculator(term, doc_id))
     return vector_result
 
-
-def query_handler(query,method = 0,use_heap=False,number_outputs = k):
+# number_cluster_check= centers of clusters to check their followers
+def query_handler(query,method = 0,use_heap=False,number_outputs = k,category = None,number_cluster_check=3):
+    start = time.process_time()
     if method == 0:
         return simple_query(query)
     if method == 1:
-        return tfIdf_cosine_query(query,use_heap,number_outputs)
+        return tfIdf_cosine_query(query,use_heap,number_outputs,only_selected_docs=only_selected_docs)
     if method == 2:
         return champion_tfidf_query(query,use_heap,number_outputs)
+    if method == 3:
+        return cluster_search(query,number_cluster_check,use_heap=use_heap,number_outputs=number_outputs)
+    if method == 4:
+        return in_category_search(query,category,use_heap=use_heap,number_outputs=number_outputs)
+    elapsed_time = time.process_time() - start
+
+    print("time to answer query: " + str(elapsed_time))
+
+
+def limited_doc_search(query, selected_docs, use_heap = False, number_outputs=k):
+    exported_tokens_temp = Tokenizer.get_normalized_tokens(query)
+    exported_tokens = []
+
+    query_vector = []
+
+    for i in exported_tokens_temp:
+        if champion_list.keys().__contains__(i):
+            print(i)
+            exported_tokens.append(i)
+            query_vector.append(tfIdf_calc(i, 1))
+    doc_results = []
+    founded = 0
+    min_index = 0
+    min_value = 2
+
+    doc_score = {}
+    if use_heap:
+        minheap = MinHeap(r)
+
+    for i in selected_docs:
+        vector_result = get_vector_presentation(exported_tokens, i)
+        doc_score[i] = cosin_sim_calculator(query_vector, vector_result)
+        if use_heap:
+            minheap.insert(-doc_score[i], i)
+        else:
+            if founded < number_outputs:
+                doc_results.append(i)
+                if min_value > doc_score[i]:
+                    min_value = doc_score[i]
+                    min_index = founded
+                founded += 1
+            elif min_value < doc_score[i]:
+                min_value = doc_score[i]
+                doc_results.pop(min_index)
+                doc_results.append(i)
+                for j in range(len(doc_results)):
+                    if doc_score[doc_results[j]] < min_value:
+                        min_index = j
+                        min_value = doc_score[doc_results[j]]
+
+    if use_heap:
+        minheap.minHeap()
+        if len(selected_docs) > number_outputs:
+            for i in range(number_outputs):
+                doc_results.append(minheap.remove())
+        else:
+            for i in range(len(selected_docs)):
+                doc_results.append(minheap.remove())
+
+    return doc_results, doc_score
+
+def cluster_search(query,number_centers,use_heap = False,number_outputs=k):
+    selected_centers = limited_doc_search(query,k_means_centers,use_heap=use_heap,number_outputs=number_centers)
+    founded_docs = []
+    for i in selected_centers:
+        founded_docs.extend(k_means_clusters[i])
+    return limited_doc_search(query,founded_docs,use_heap=use_heap,number_outputs=number_outputs)
+
+def in_category_search(query,category,use_heap = False,number_outputs=k):
+    only_selected_docs = categories[category]
+    return limited_doc_search(query,only_selected_docs,use_heap=use_heap,number_outputs=number_outputs)
+
 
 # calculates the vector space presentation and similarity and sort by heap(return the sorted MinHeap)
 def tfIdf_cosine_query(query,use_heap = False,number_outputs = k,exceptions = []):
@@ -496,6 +586,8 @@ def tfIdf_cosine_query(query,use_heap = False,number_outputs = k,exceptions = []
     for i in exported_tokens_temp:
         if inverted_index.keys().__contains__(i):
             exported_tokens.append(i)
+
+
 
     for i in range(len(exported_tokens)):
         print(exported_tokens[i])
@@ -660,8 +752,21 @@ def main():
 
     while(True):
         try:
-            query = input("query: ")
-            method = int(input("enter method:\n 0: simple query\n 1: tfidf query\n 3: champion list"))
+            query = input("query: \n")
+            if query.startswith("cat:"):
+                query = query.replace("cat:","")
+                cat = query.split(" ")[0]
+                if not categories.keys().__contains__(cat):
+                    print("wrong category!")
+                    continue
+                use_heap = int(input("\n enter 1 in order to use min heap or enter 0 otherwise")) is 1
+                print(use_heap)
+                output,values = query_handler(query,4,use_heap=use_heap,category=cat)
+                for i in output:
+                    print("ID: "+ str(i)+", score: " + str(values[i]) + " --> " + str(urls[i]))
+
+
+            method = int(input("enter method:\n 0: simple query\n 1: tfidf query\n 2: champion list\n 3: K_means check\n"))
             print("Results:")
             if method == 0:
                 index = 0
@@ -674,10 +779,17 @@ def main():
                             break
                     if index > k:
                         break
-            else:
+            elif method == 1 or method == 2:
                 use_heap = int(input("\n enter 1 in order to use min heap or enter 0 otherwise")) is 1
                 print(use_heap)
                 output,values = query_handler(query,method,use_heap=use_heap)
+                for i in output:
+                    print("ID: "+ str(i)+", score: " + str(values[i]) + " --> " + str(urls[i]))
+            elif method == 3:
+                use_heap = int(input("\n enter 1 in order to use min heap or enter 0 otherwise")) is 1
+                number_of_cluster_centers = int(input("\n enter number od clusters to check"))
+
+                output,values = query_handler(query,method,use_heap=use_heap,number_outputs=number_of_cluster_centers)
                 for i in output:
                     print("ID: "+ str(i)+", score: " + str(values[i]) + " --> " + str(urls[i]))
         except:
