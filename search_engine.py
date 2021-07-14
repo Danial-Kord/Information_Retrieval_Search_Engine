@@ -12,7 +12,7 @@ import gc
 min_high_frequency_tokens = 0.80
 
 tokens = []
-
+tokens_place = {} #token to index of array tokens
 inverted_index = {}
 champion_list = {} #collection of the best from inverted index
 r = 20 #max len of the champion list for every term
@@ -22,19 +22,20 @@ ignorance_tokens =[]
 urls = {}
 
 df = {} #documents frequency of words
-
-#doc term frequency(doc ID are rows, each row has a dictionary of tokens to frequency)
-tdf = {}
+docs_vector_presentation = {} #for none index elimination purposes
+doc_term_score = {}# docs_vector_presentation = {} #(docID,token) --> score
+doc_to_term = {} #exactly oposite of inverted index (doc --> terms)
+tdf = {}#doc term frequency(doc ID are rows, each row has a dictionary of tokens to frequency)
 k = 5 #return the 5 best results
 total_docs = 0
 
 doc_IDS = []
 doc_labels = {} #doc ID maps to label
 categories = {} #label to doc IDS
-docs_vector_presentation = {}
+
 k_means_centers = []
 k_means_clusters = {}
-k_means_k_value = 5 #K cluster
+k_means_k_value = 20 #K cluster
 
 import re
 # test re
@@ -169,14 +170,21 @@ def KNN(k,n=220): #check with k closest n = number od train data to check new da
         # print("new")
         k_nearest.clear()
         founded = 0
-        v1 = docs_vector_presentation[id]
+
 
         del minheap
         gc.collect()
         minheap = MinHeap(len(sample_train_data))
         for train_doc in sample_train_data:
 
-            v2 = docs_vector_presentation[train_doc]
+            my_set = set()
+            for i in doc_to_term[id]:
+                my_set.add(i)
+            for i in doc_to_term[train_doc]:
+                my_set.add(i)
+            exported_terms = list(my_set)
+            v1 = get_vector_presentation(exported_terms,id,True)
+            v2 = get_vector_presentation(exported_terms,train_doc,True)
             similarity = cosin_sim_calculator(v1,v2)
             minheap.insert(-similarity,train_doc)
             # if founded < k:
@@ -244,37 +252,47 @@ def k_means(k, max_itr,doc_IDs = doc_IDS):
 
     clusters = list()
     similarity_value_clusters = []
+    cluster_vector_presentation = []
 
     for i in range(k):
-        print(len(doc_IDs))
         random_centers.append(doc_IDs[random.randint(0, len(doc_IDs))])
         clusters.append(list())
         similarity_value_clusters.append([])
-
+        cluster_vector_presentation.append(list())
 
     itr = 0
     centers = random_centers
     centers_vector_presentation = []
+    for i in centers:
+        centers_vector_presentation.append(get_vector_presentation(tokens,i,use_saved_data=True))
     while itr < max_itr:
+        print("iteration : "+str(itr))
         row_index = 0
         for i in clusters:
             i.clear()
-        for i in centers:
-            centers_vector_presentation.append(docs_vector_presentation[i])
-        new_centers = copy.deepcopy(centers)
+        for i in cluster_vector_presentation:
+            i.clear()
+
+        new_centers_vector_presentation = copy.deepcopy(centers_vector_presentation)
         for row in doc_IDs:
 
             # row = row_data.values.tolist()
             best_match_index = 0
             best_similarity = -1
+            best_vector = None
             for c in range(k):
-                sim = cosin_sim_calculator(centers_vector_presentation[c],docs_vector_presentation[row])
+                places = []
+                for i in doc_to_term[row]:
+                    places.append(tokens_place[i])
+                new_vector = get_vector_presentation(tokens,row,use_saved_data=True,index_limits=places)
+                sim = cosin_sim_calculator(new_vector,centers_vector_presentation[c],places)
 
                 if best_similarity < sim:
                     best_similarity = sim
                     best_match_index = c
+                    best_vector = new_vector
             clusters[best_match_index].append(row)
-            similarity_value_clusters[best_match_index].append(best_similarity)
+            cluster_vector_presentation[best_match_index].append(best_vector)
             row_index += 1
 
         last_index =0
@@ -282,30 +300,32 @@ def k_means(k, max_itr,doc_IDs = doc_IDS):
         for i in range(k):
             if len(clusters[i]) == 0:
                 continue
-            cluster_points = clusters[i]
-            mean_similarity_value = np.mean(np.array(similarity_value_clusters[i]))
-            best_index = 0
-            closest_to_mean = abs(mean_similarity_value - similarity_value_clusters[i][0])
-            index = 0
-            for j in similarity_value_clusters[i]:
-                new_sim = abs(j - mean_similarity_value)
-                if new_sim < closest_to_mean:
-                    best_index = index
-                    closest_to_mean = new_sim
-                index += 1
+            doc_indx = 0
+            for doc in i:
+                places = []
+                for j in doc_to_term[doc]:
+                    places.append(tokens_place[j])
+                index = 0
+                for j in places:
+                    new_centers_vector_presentation[i][j] += cluster_vector_presentation[i][doc_indx][index]
+                    index += 1
+                doc_indx += 1
 
-            new_centers[i] = cluster_points[best_index]
+            for j in range(len(new_centers_vector_presentation[i])):
+                new_centers_vector_presentation[i][j] /= len(cluster_vector_presentation[i])
+
+
+            new_centers_vector_presentation[i] = np.mean(np.array(cluster_vector_presentation[i]))
         # print("new centers : \n",new_centers)
         # print("old centers: \n",centers)
 
-        if centers == new_centers:
+        if centers_vector_presentation == new_centers_vector_presentation:
             break
-        centers = new_centers
         itr+=1
     for i in clusters:
         print(i)
 
-    k_means_centers = centers
+    k_means_centers = centers_vector_presentation
     indexx = 0
     for i in k_means_centers:
         k_means_clusters[i] = clusters[indexx]
@@ -384,6 +404,12 @@ def update_term_frequency(normalizedToken,originalToken,text,doc_ID):
     tdf[doc_ID][normalizedToken] += count
 
 
+positional_index = {} # (token,doc ID) --> place index
+def make_positional_index(token,doc_ID,index):
+    if positional_index.keys().__contains__((token,doc_ID)) is False:
+        positional_index[(token,doc_ID)] = []
+    positional_index[(token, doc_ID)].append(index)
+
 
 def add_new_file(path,content_ID_col_name,content_col_name,url_col_name,label_col = None):
     data = pd.read_excel(path)
@@ -393,6 +419,7 @@ def add_new_file(path,content_ID_col_name,content_col_name,url_col_name,label_co
         line = row[content_col_name]
         urls[ID] = row[url_col_name]
         doc_IDS.append(ID)
+        doc_to_term[ID] = []
         # statement = "S " + i
         # print(ID)
         if label_col != None:
@@ -408,25 +435,28 @@ def add_new_file(path,content_ID_col_name,content_col_name,url_col_name,label_co
             if token in ignorance_tokens:
                 continue
             normalized_token = Tokenizer.token_normalizer(token)
+            doc_to_term[ID].append(normalized_token)
             update_inverted_index_list(normalized_token,ID,True)
             update_term_frequency(normalized_token,token,line,ID)
-
 
     return data
 
 
 # gives the similarity of 2 vectors
-def cosin_sim_calculator(query_vector,doc_vector):
+def cosin_sim_calculator(query_vector,doc_vector,limit_index = None):
     similarity = 0
     first_vector_len = 0
     second_vector_len = 0
     for index in range(len(query_vector)):
         v1 = query_vector[index]
-        v2 = doc_vector[index]
+        if limit_index is not None:
+            v2 = doc_vector[limit_index[index]]
+        else:
+            v2 = doc_vector[index]
         similarity += v1 * v2
         first_vector_len += v1 ** 2
         second_vector_len += v2 ** 2
-    return similarity / (math.sqrt(first_vector_len * second_vector_len))
+    return similarity / (math.sqrt(first_vector_len * second_vector_len + 0.0001))
 
 
 
@@ -518,29 +548,48 @@ def champion_tfidf_query(query,use_heap = True,number_outputs = k):
 
 
 
-def get_vector_presentation(terms,doc_id):
+def get_vector_presentation(terms,doc_id,use_saved_data = False,index_limits = None):
     vector_result = []
-    for term in terms:
-        vector_result.append(tfIdf_calculator(term, doc_id))
+    if use_saved_data:
+        if index_limits is None:
+            for term in terms:
+                if doc_term_score.keys().__contains__((doc_id,term)):
+                    vector_result.append(doc_term_score[(doc_id,term)])
+                else:
+                    vector_result.append(0)
+        else:
+            for index in index_limits:
+                if doc_term_score.keys().__contains__((doc_id,terms[index])):
+                    vector_result.append(doc_term_score[(doc_id,terms[index])])
+                else:
+                    vector_result.append(0)
+    else:
+        if index_limits is None:
+            for term in terms:
+                vector_result.append(tfIdf_calculator(term, doc_id))
+        else:
+            for index in index_limits:
+                vector_result.append(tfIdf_calculator(terms[index], doc_id))
     return vector_result
 
 # number_cluster_check= centers of clusters to check their followers
 def query_handler(query,method = 0,use_heap=False,number_outputs = k,category = None,number_cluster_check=3):
     start = time.process_time()
+    output = None
     if method == 0:
-        return simple_query(query)
+        output = simple_query(query)
     if method == 1:
-        return tfIdf_cosine_query(query,use_heap,number_outputs,only_selected_docs=only_selected_docs)
+        output = tfIdf_cosine_query(query,use_heap,number_outputs)
     if method == 2:
-        return champion_tfidf_query(query,use_heap,number_outputs)
+        output = champion_tfidf_query(query,use_heap,number_outputs)
     if method == 3:
-        return cluster_search(query,number_cluster_check,use_heap=use_heap,number_outputs=number_outputs)
+        output = cluster_search(query,number_cluster_check,use_heap=use_heap,number_outputs=number_outputs)
     if method == 4:
-        return in_category_search(query,category,use_heap=use_heap,number_outputs=number_outputs)
+        output = in_category_search(query,category,use_heap=use_heap,number_outputs=number_outputs)
     elapsed_time = time.process_time() - start
 
     print("time to answer query: " + str(elapsed_time))
-
+    return output
 
 def limited_doc_search(query, selected_docs, use_heap = False, number_outputs=k):
     exported_tokens_temp = Tokenizer.get_normalized_tokens(query)
@@ -549,7 +598,7 @@ def limited_doc_search(query, selected_docs, use_heap = False, number_outputs=k)
     query_vector = []
 
     for i in exported_tokens_temp:
-        if champion_list.keys().__contains__(i):
+        if i in tokens:
             print(i)
             exported_tokens.append(i)
             query_vector.append(tfIdf_calc(i, 1))
@@ -738,88 +787,154 @@ def simple_query(query):
 
     return results_by_order.__reversed__()
 
-
+# useless cause none index elimination
 def calculate_docs_vector_presentation(all_doc_IDs, terms):
     docs_vector_presentation.clear()
     for i in all_doc_IDs:
         docs_vector_presentation[i] = get_vector_presentation(terms, i)
 
-
+def fill_doc_term_score_dict():
+    doc_term_score.clear()
+    for i in inverted_index:
+        docs = inverted_index[i]
+        for doc in docs:
+            doc_term_score[(doc,i)] = tfIdf_calculator(i,doc)
 
 
 def save_data():
-    pickle_out = open("categories.pickle", "wb")
-    pickle.dump(categories, pickle_out)
-    pickle_out.close()
+    if len(categories) > 0:
+        pickle_out = open("categories.pickle", "wb")
+        pickle.dump(categories, pickle_out)
+        pickle_out.close()
+    #
+    # pickle_out = open("total_docs.pickle", "wb")
+    # pickle.dump(total_docs, pickle_out)
+    # pickle_out.close()
+    if len(k_means_centers) > 0:
+        pickle_out = open("clusters.pickle", "wb")
+        pickle.dump(k_means_clusters, pickle_out)
+        pickle_out.close()
+        pickle_out = open("centers.pickle", "wb")
+        pickle.dump(k_means_centers, pickle_out)
+        pickle_out.close()
 
 def read_data():
-    pickle_in = open("dict.pickle", "rb")
-    categories = pickle.load(pickle_in)
+    try:
+        pickle_in = open("categories.pickle", "rb")
+        global categories
+        categories = pickle.load(pickle_in)
+        print("added KNN data")
+    except:
+        print("didn't find KNN data")
+    try:
+        pickle_in = open("clusters.pickle", "rb")
+        global k_means_clusters
+        k_means_clusters = pickle.load(pickle_in)
+
+        pickle_in = open("centers.pickle", "rb")
+        global k_means_centers
+        k_means_centers = pickle.load(pickle_in)
+
+        print("added k-means data")
+    except:
+        print("didn't find k-means data")
+    # pickle_in = open("total_docs.pickle", "rb")
+    # global total_docs
+    # total_docs = pickle.load(pickle_in)
+
+def make_token_place_array():
+    tokens_place.clear()
+    for i in range(len(tokens)):
+        tokens_place[tokens[i]] = i
 
 def main():
 
 
     total_words_count = 0
     total_words_count +=1
-    # test = "hi?he-----------llo, +-123****,bye///\\\\\\\didi^hmm"
-    #
-    # out = Tokenizer.get_tokens(test)
-    #
-    # for i in out:
-    #     print(i)
 
-    # test = "بدترین"
-    # print(Tokenizer.token_normalizer(test))
+    method = int(input(" 1.query\n 2. build KNN data \n 3. build k-means data \n "))
+
     verb_heritages_path = "verbs.txt"
     Tokenizer.make_verb_to_heritage_dict(verb_heritages_path)
-    # input()
+    if method == 1:
+            read_data()
+
+
+    else:
+        print("if you had saved KNN or K-means data before be sure to backup it due to this method will override all last data")
+        if input("enter any key to continue or enter EXIT\n") == "EXIT":
+            return None
 
     id_col = "id"
     content_col = "content"
     url_col = "url"
-    data = add_new_file("IR_Spring2021_ph12_7k.xlsx","id","content","url")
+    label_col = None
+    if method == 3 or method == 2:
+        label_col = "topic"
 
-    clear_most_repeated_tokens()
-
-    id_col = "id"
-    content_col = "content"
-    url_col = "url"
-    label_col = "topic"
+    print("adding excel/csv data for starting query processing...")
+    add_new_file("IR_Spring2021_ph12_7k.xlsx",id_col,content_col,url_col)
+    print("first set data added")
     add_new_file("IR00_3_11k News.xlsx",id_col,content_col,url_col,label_col)
+    print("second set data added")
+    add_new_file("IR00_3_17k News.xlsx",id_col,content_col,url_col,label_col)
+    print("third data added")
+    add_new_file("IR00_3_20k News.xlsx",id_col,content_col,url_col,label_col)
+    print("all data added")
 
 
-
+    print("clearing none useful data...")
     clear_most_repeated_tokens()
-    for i in tokens:
-        print(i + " --- " + str((len(i) / len(tokens))))
-    print(len(tokens))
-    # make_championList()
-    calculate_docs_vector_presentation(doc_IDS, tokens)
 
-    # KNN_validation(10)
-    KNN(7)
-    save_data()
-    return None
+    if method == 2:
+        make_token_place_array()
+        fill_doc_term_score_dict()
+        # KNN_validation(10) #testing KNN with 10 fold (take time...)
+        KNN(7)
+        print("finished KNN\n run again for use processed data")
+        save_data()
+        return None
+    if method == 3:
+        make_token_place_array()
+        fill_doc_term_score_dict()
+        k_means(k_means_k_value,6)
+        print("finished k-means\n run again for use processed data")
+        save_data()
+        return None
+    # calculate_docs_vector_presentation(doc_IDS, tokens) #high memory usage!
 
-    # k_means(k_means_k_value,6)
 
-    
+
+
+    make_championList()
+    print("use cat:category tokens.... for using KNN algorithm\n like cat:sport استقلال")
     while(True):
-        try:
-            query = input("query: \n")
-            if query.startswith("cat:"):
-                query = query.replace("cat:","")
-                cat = query.split(" ")[0]
-                if not categories.keys().__contains__(cat):
-                    print("wrong category!")
-                    continue
-                use_heap = int(input("\n enter 1 in order to use min heap or enter 0 otherwise")) is 1
-                print(use_heap)
-                output,values = query_handler(query,4,use_heap=use_heap,category=cat)
-                for i in output:
-                    print("ID: "+ str(i)+", score: " + str(values[i]) + " --> " + str(urls[i]))
 
+        query = input("query: \n")
+        if query == "-h" or query == "help":
+            print("use cat:category tokens.... for using KNN algorithm\n like cat:sport استقلال")
+            print("enter some sequence of words in query and then choose te method you prefer")
+            continue
+        if query.startswith("cat:"):
+            query = query.replace("cat:","")
+            cat = query.split(" ")[0]
+            if not categories.keys().__contains__(cat):
+                print("wrong category!")
+                print("categories --> ")
+                for i in categories:
+                    print(i)
+                continue
+            query = query.replace(cat,"")
+            use_heap = int(input("\n enter 1 in order to use min heap or enter 0 otherwise")) is 1
+            print(use_heap)
+            output,values = query_handler(query,4,use_heap=use_heap,category=cat)
+            print("done")
+            for i in output:
+                print(str(urls[i]))
+                print("ID: "+ str(i)+", score: " + str(values[i]) + " --> " + str(urls[i]))
 
+        else:
             method = int(input("enter method:\n 0: simple query\n 1: tfidf query\n 2: champion list\n 3: K_means check\n"))
             print("Results:")
             if method == 0:
@@ -846,6 +961,8 @@ def main():
                 output,values = query_handler(query,method,use_heap=use_heap,number_outputs=number_of_cluster_centers)
                 for i in output:
                     print("ID: "+ str(i)+", score: " + str(values[i]) + " --> " + str(urls[i]))
+        try:
+            print("fuck")
         except:
             print("some ERRORS accrued")
 
