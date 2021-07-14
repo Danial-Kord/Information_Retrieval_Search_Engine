@@ -4,7 +4,7 @@ import re
 
 verbs_stemming = {}
 
-split_characters = "[?., : \" - ؛ ; !#${}() % + = \\\  _ * ` ~ @ ^ / > < ، \n « »]+"
+split_characters = "[ ؟ ? . , : \" - - ؛ ; !#${}() % + = \\\  _ * ` ~ @ ^ / > < ، \n « »]+"
 
 end_token_redundant = ['تر',
                     'ترین'
@@ -77,7 +77,13 @@ class Tokenizer:
 
 
     def get_tokens(text):
-        return re.split(split_characters,text)
+        result = re.split(split_characters,text)
+        output = []
+        for i in result:
+            if i.isnumeric():
+                continue
+            output.append(i)
+        return output
 
     def get_normalized_tokens(text):
         outputSet = set()

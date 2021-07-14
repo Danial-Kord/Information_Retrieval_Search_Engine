@@ -7,7 +7,9 @@ import numpy as np
 import sys
 import random
 import time
-min_high_frequency_tokens = 0.86
+import pickle
+import gc
+min_high_frequency_tokens = 0.80
 
 tokens = []
 
@@ -31,8 +33,8 @@ doc_labels = {} #doc ID maps to label
 categories = {} #label to doc IDS
 docs_vector_presentation = {}
 k_means_centers = []
-k_means_clusters = []
-
+k_means_clusters = {}
+k_means_k_value = 5 #K cluster
 
 import re
 # test re
@@ -141,7 +143,7 @@ def KNN_validation(folds = 10,k = 3,fraction_of_labeled_data = 0.03):
 
 
 # find all docs without label and choose the best label for them
-def KNN(k,n=300): #check with k closest n = number od train data to check new data with
+def KNN(k,n=220): #check with k closest n = number od train data to check new data with
 
 
     k_nearest = []# [(index,similarity)]
@@ -153,7 +155,13 @@ def KNN(k,n=300): #check with k closest n = number od train data to check new da
     correct_guessed_lables = 0
 
     founded = 0
-    sample_train_data = random.sample(list(doc_labels.keys()),n)
+    sample_train_data = []
+    n = int(n/(len(categories)))
+    for i in categories:
+        sample_train_data.extend(random.sample(categories[i],min(n,len(categories[i]))))
+    progress = 0
+    docs_len = len(doc_IDS)
+    minheap = MinHeap(len(sample_train_data))
     for id in doc_IDS:
         if doc_labels.keys().__contains__(id):
             continue
@@ -161,33 +169,40 @@ def KNN(k,n=300): #check with k closest n = number od train data to check new da
         # print("new")
         k_nearest.clear()
         founded = 0
-        v1 = get_vector_presentation(id,tokens)
+        v1 = docs_vector_presentation[id]
 
+        del minheap
+        gc.collect()
+        minheap = MinHeap(len(sample_train_data))
         for train_doc in sample_train_data:
-        
-            v2 = get_vector_presentation(train_doc,tokens)
-            similarity = cosin_sim_calculator(v1,v2)
 
-            if founded < k:
-                k_nearest.append((train_doc,similarity))
-                if min_similarity > similarity:
-                    min_similarity = similarity
-                    min_index = founded
-                founded += 1
-            elif min_similarity < similarity:
-                min_similarity = similarity
-                k_nearest.pop(min_index)
-                k_nearest.append((train_doc,similarity))
-                for index in range(len(k_nearest)):
-                    i,value = k_nearest[index]
-                    if value < min_similarity:
-                        min_index = index
-                        min_similarity = value
+            v2 = docs_vector_presentation[train_doc]
+            similarity = cosin_sim_calculator(v1,v2)
+            minheap.insert(-similarity,train_doc)
+            # if founded < k:
+            #     k_nearest.append((train_doc,similarity))
+            #     if min_similarity > similarity:
+            #         min_similarity = similarity
+            #         min_index = founded
+            #     founded += 1
+            # elif min_similarity < similarity:
+            #     min_similarity = similarity
+            #     k_nearest.pop(min_index)
+            #     k_nearest.append((train_doc,similarity))
+            #     for index in range(len(k_nearest)):
+            #         i,value = k_nearest[index]
+            #         if value < min_similarity:
+            #             min_index = index
+            #             min_similarity = value
         k_nearest_labels = {}
         best_choice_label_name = None #best label with highest repeat name
         best_choice_number = -1 #best label number of repeated
 
-        for knn_id, value in k_nearest:
+        minheap.minHeap()
+
+        for i in range(k):
+            k_nearest.append(minheap.remove())
+        for knn_id in k_nearest:
             label = doc_labels[knn_id]
             # print(label)
             if not k_nearest_labels.keys().__contains__(label):
@@ -213,21 +228,26 @@ def KNN(k,n=300): #check with k closest n = number od train data to check new da
         if not categories.keys().__contains__(guessed_label):
             categories[guessed_label] = []
         categories[guessed_label].append(id)
+        progress += 1
+        print("progress : " + str(progress / docs_len))
         
 
 # KNN--------------------------------------------
 
+
+# Kmeans
 # calculates the k best centers and fill the clusters according to that
 def k_means(k, max_itr,doc_IDs = doc_IDS):
 
-
+    print("K means started")
     random_centers = list()
 
     clusters = list()
     similarity_value_clusters = []
 
     for i in range(k):
-        random_centers.append(doc_IDs[np.random.uniform(0, len(doc_IDs))])
+        print(len(doc_IDs))
+        random_centers.append(doc_IDs[random.randint(0, len(doc_IDs))])
         clusters.append(list())
         similarity_value_clusters.append([])
 
@@ -272,6 +292,7 @@ def k_means(k, max_itr,doc_IDs = doc_IDS):
                 if new_sim < closest_to_mean:
                     best_index = index
                     closest_to_mean = new_sim
+                index += 1
 
             new_centers[i] = cluster_points[best_index]
         # print("new centers : \n",new_centers)
@@ -284,8 +305,13 @@ def k_means(k, max_itr,doc_IDs = doc_IDS):
     for i in clusters:
         print(i)
 
-    return centers,clusters
+    k_means_centers = centers
+    indexx = 0
+    for i in k_means_centers:
+        k_means_clusters[i] = clusters[indexx]
+        indexx += 1
 
+#Kmeans-----------------------------------------------------------
 
 def tfIdf_calculator(token,doc_ID):
     if tdf[doc_ID].keys().__contains__(token) is False:
@@ -361,10 +387,12 @@ def update_term_frequency(normalizedToken,originalToken,text,doc_ID):
 
 def add_new_file(path,content_ID_col_name,content_col_name,url_col_name,label_col = None):
     data = pd.read_excel(path)
+    total = copy.deepcopy(total_docs)
     for index, row in data.iterrows():
-        ID = row[content_ID_col_name] + total_docs
+        ID = row[content_ID_col_name] + total
         line = row[content_col_name]
         urls[ID] = row[url_col_name]
+        doc_IDS.append(ID)
         # statement = "S " + i
         # print(ID)
         if label_col != None:
@@ -383,8 +411,7 @@ def add_new_file(path,content_ID_col_name,content_col_name,url_col_name,label_co
             update_inverted_index_list(normalized_token,ID,True)
             update_term_frequency(normalized_token,token,line,ID)
 
-    make_championList()
-    calculate_docs_vector_presentation(doc_IDS, tokens)
+
     return data
 
 
@@ -412,6 +439,10 @@ def clear_most_repeated_tokens():
             tokens.remove(token)
             inverted_index.pop(token)
             ignorance_tokens.append(token)
+            df.pop(token)
+            for i in tdf:
+                if tdf[i].keys().__contains__(token):
+                    tdf[i].pop(token)
     copy_tokens.clear()
 
 
@@ -715,15 +746,18 @@ def calculate_docs_vector_presentation(all_doc_IDs, terms):
 
 
 
+
+def save_data():
+    pickle_out = open("categories.pickle", "wb")
+    pickle.dump(categories, pickle_out)
+    pickle_out.close()
+
+def read_data():
+    pickle_in = open("dict.pickle", "rb")
+    categories = pickle.load(pickle_in)
+
 def main():
 
-    id_col = "id"
-    content_col = "content"
-    url_col = "url"
-    label_col = "topic"
-    add_new_file("IR00_3_11k News.xlsx",id_col,content_col,url_col,label_col)
-    KNN_validation(10)
-    return None
 
     total_words_count = 0
     total_words_count +=1
@@ -747,9 +781,29 @@ def main():
 
     clear_most_repeated_tokens()
 
-    for i in tokens:
-        print(i)
+    id_col = "id"
+    content_col = "content"
+    url_col = "url"
+    label_col = "topic"
+    add_new_file("IR00_3_11k News.xlsx",id_col,content_col,url_col,label_col)
 
+
+
+    clear_most_repeated_tokens()
+    for i in tokens:
+        print(i + " --- " + str((len(i) / len(tokens))))
+    print(len(tokens))
+    # make_championList()
+    calculate_docs_vector_presentation(doc_IDS, tokens)
+
+    # KNN_validation(10)
+    KNN(7)
+    save_data()
+    return None
+
+    # k_means(k_means_k_value,6)
+
+    
     while(True):
         try:
             query = input("query: \n")
